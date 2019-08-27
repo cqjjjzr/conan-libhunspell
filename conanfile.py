@@ -1,71 +1,127 @@
-from conans import ConanFile, CMake, tools
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+from conans import ConanFile, tools, AutoToolsBuildEnvironment
+from conans.errors import ConanInvalidConfiguration
 import os
+import glob
 
 
-class LibnameConan(ConanFile):
-    name = "libname"
-    version = "0.0.0"
-    description = "Keep it short"
-    # topics can get used for searches, GitHub topics, Bintray tags etc. Add here keywords about the library
-    topics = ("conan", "libname", "logging")
-    url = "https://github.com/bincrafters/conan-libname"
-    homepage = "https://github.com/original_author/original_lib"
-    author = "Bincrafters <bincrafters@gmail.com>"
-    license = "MIT"  # Indicates license type of the packaged library; please use SPDX Identifiers https://spdx.org/licenses/
-    exports = ["LICENSE.md"]      # Packages the license for the conanfile.py
-    # Remove following lines if the target lib does not use cmake.
-    exports_sources = ["CMakeLists.txt"]
-    generators = "cmake"
-
-    # Options may need to change depending on the packaged library.
-    settings = "os", "arch", "compiler", "build_type"
+class LibhunspellConan(ConanFile):
+    name = "libhunspell"
+    version = "1.7.0"
+    file_id = 2573619 # from https://github.com/hunspell/hunspell/files/2573619/hunspell-1.7.0.tar.gz
+    description = "The most popular spellchecking library."
+    url = "https://github.com/bincrafters/conan-libiconv"
+    homepage = "https://github.com/hunspell/hunspell"
+    author = "Charlie Jiang <cqjjjzr@126.com>"
+    topics = "natural-language-processing", "spellcheck", "spellchecker", "stemming", "spell-check", "spell-checking-engine", "spell-checker"
+    license = "GPL-2"
+    exports = ["LICENSE.md"]
+    settings = "os", "compiler", "build_type", "arch"
     options = {"shared": [True, False], "fPIC": [True, False]}
-    default_options = {"shared": False, "fPIC": True}
-
-    # Custom attributes for Bincrafters recipe conventions
+    default_options = {'shared': False, 'fPIC': True}
+    short_paths = True
     _source_subfolder = "source_subfolder"
-    _build_subfolder = "build_subfolder"
 
-    requires = (
-        "OpenSSL/1.0.2s@conan/stable",
-        "zlib/1.2.11@conan/stable"
-    )
+    @property
+    def _is_mingw_windows(self):
+        return self.settings.os == 'Windows' and self.settings.compiler == 'gcc' and os.name == 'nt'
+
+    @property
+    def _is_msvc(self):
+        return self.settings.compiler == 'Visual Studio'
+
+    def system_requirements(self):
+        try:
+            installer = conans.tools.SystemPackageTool()
+            installer.update()
+            installer.install('autoconf')
+            installer.install('automake')
+            installer.install('libtool')
+            installer.install('make')
+            installer.install('pkg-config')
+        except:
+            self.output.warn('Unable to bootstrap required build tools.  If they are already installed, you can ignore this warning.')
+
+    def build_requirements(self):
+        if tools.os_info.is_windows:
+            if "CONAN_BASH_PATH" not in os.environ:
+                self.build_requires("msys2_installer/latest@bincrafters/stable")
+
+    def configure(self):
+        del self.settings.compiler.libcxx
 
     def config_options(self):
         if self.settings.os == 'Windows':
             del self.options.fPIC
 
     def source(self):
-        source_url = "https://github.com/libauthor/libname"
-        tools.get("{0}/archive/v{1}.tar.gz".format(source_url, self.version), sha256="Please-provide-a-checksum")
-        extracted_dir = self.name + "-" + self.version
+        archive_name = "hunspell-{0}".format(self.version)
+        source_url = "https://github.com/hunspell/hunspell/files/"
+        tools.get("{0}/{1}/{2}.tar.gz".format(source_url, self.file_id, archive_name),
+                  sha256="57be4e03ae9dd62c3471f667a0d81a14513e314d4d92081292b90435944ff951")
+        os.rename(archive_name, self._source_subfolder)
 
-        # Rename to "source_subfolder" is a convention to simplify later steps
-        os.rename(extracted_dir, self._source_subfolder)
+        with open(os.path.join(self._source_subfolder, "src", "Makefile.am"), "w") as f:
+            f.write("SUBDIRS=hunspell\n\n")
 
-    def _configure_cmake(self):
-        cmake = CMake(self)
-        cmake.definitions["BUILD_TESTS"] = False  # example
-        cmake.configure(build_folder=self._build_subfolder)
-        return cmake
+    def _build_autotools(self):
+        prefix = os.path.abspath(self.package_folder)
+        rc = None
+        host = None
+        build = None
+        if self._is_mingw_windows or self._is_msvc:
+            prefix = prefix.replace('\\', '/')
+            build = False
+            if self.settings.arch == "x86":
+                host = "i686-w64-mingw32"
+                rc = "windres --target=pe-i386"
+            elif self.settings.arch == "x86_64":
+                host = "x86_64-w64-mingw32"
+                rc = "windres --target=pe-x86-64"
+
+        #
+        # If you pass --build when building for iPhoneSimulator, the configure script halts.
+        # So, disable passing --build by setting it to False.
+        #
+        if self.settings.os == "iOS" and self.settings.arch == "x86_64":
+            build = False
+
+        env_build = AutoToolsBuildEnvironment(self, win_bash=tools.os_info.is_windows)
+
+        if self.settings.os != "Windows":
+            env_build.fpic = self.options.fPIC
+
+        configure_args = ['--prefix=%s' % prefix]
+        if self.options.shared:
+            configure_args.extend(['--disable-static', '--enable-shared'])
+        else:
+            configure_args.extend(['--enable-static', '--disable-shared'])
+
+        env_vars = {}
+
+        if rc:
+            configure_args.extend(['RC=%s' % rc, 'WINDRES=%s' % rc])
+
+        with tools.chdir(self._source_subfolder):
+            with tools.environment_append(env_vars):
+                self.run("autoreconf -vfi", win_bash=tools.os_info.is_windows)
+                env_build.configure(args=configure_args, host=host, build=build)
+                env_build.make()
+                env_build.install()
 
     def build(self):
-        cmake = self._configure_cmake()
-        cmake.build()
+        with tools.vcvars(self.settings) if self._is_msvc else tools.no_op():
+            self._build_autotools()
 
     def package(self):
-        self.copy(pattern="LICENSE", dst="licenses", src=self._source_subfolder)
-        cmake = self._configure_cmake()
-        cmake.install()
-        # If the CMakeLists.txt has a proper install method, the steps below may be redundant
-        # If so, you can just remove the lines below
-        include_folder = os.path.join(self._source_subfolder, "include")
-        self.copy(pattern="*", dst="include", src=include_folder)
-        self.copy(pattern="*.dll", dst="bin", keep_path=False)
-        self.copy(pattern="*.lib", dst="lib", keep_path=False)
-        self.copy(pattern="*.a", dst="lib", keep_path=False)
-        self.copy(pattern="*.so*", dst="lib", keep_path=False)
-        self.copy(pattern="*.dylib", dst="lib", keep_path=False)
+        self.copy(os.path.join(self._source_subfolder, "COPYING.LIB"),
+                  dst="licenses", ignore_case=True, keep_path=False)
+        # remove libtool .la files - they have hard-coded paths
+        with tools.chdir(os.path.join(self.package_folder, "lib")):
+            for filename in glob.glob("*.la"):
+                os.unlink(filename)
 
     def package_info(self):
         self.cpp_info.libs = tools.collect_libs(self)

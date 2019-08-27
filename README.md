@@ -2,7 +2,7 @@
 
 | Bintray | Windows | Linux & macOS |
 |:--------:|:---------:|:-----------------:|
-|[![Download](https://api.bintray.com/packages/charliejiang/conan/libhunspell%3Abincrafters/images/download.svg) ](https://bintray.com/charliejiang/conan/libhunspell%3Abincrafters/_latestVersion)|[![Build status](https://ci.appveyor.com/api/projects/status/github/cqjjjzr/conan-libhunspell?svg=true)](https://ci.appveyor.com/project/bincrafters/conan-libhunspell)|[![Build Status](https://travis-ci.com/cqjjjzr/conan-libhunspell.svg)](https://travis-ci.com/bincrafters/conan-libhunspell)|
+|[![Download](https://api.bintray.com/packages/charliejiang/conan/libhunspell%3Abincrafters/images/download.svg) ](https://bintray.com/charliejiang/conan/libhunspell%3Abincrafters/_latestVersion)|[![Build status](https://ci.appveyor.com/api/projects/status/github/cqjjjzr/conan-libhunspell?svg=true)](https://ci.appveyor.com/project/qjjjzr/conan-libhunspell)|[![Build Status](https://travis-ci.com/cqjjjzr/conan-libhunspell.svg)](https://travis-ci.com/bincrafters/conan-libhunspell)|
 
 ## Conan Information
 
