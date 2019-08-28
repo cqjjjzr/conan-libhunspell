@@ -1,16 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from conans import ConanFile, tools, AutoToolsBuildEnvironment
+from conans import ConanFile, tools, AutoToolsBuildEnvironment, MSBuild
 from conans.errors import ConanInvalidConfiguration
+from conans.tools import os_info, SystemPackageTool
 import os
 import glob
+import traceback
 
 
 class LibhunspellConan(ConanFile):
     name = "libhunspell"
     version = "1.7.0"
-    file_id = 2573619 # from https://github.com/hunspell/hunspell/files/2573619/hunspell-1.7.0.tar.gz
     description = "The most popular spellchecking library."
     url = "https://github.com/bincrafters/conan-libiconv"
     homepage = "https://github.com/hunspell/hunspell"
@@ -34,8 +35,12 @@ class LibhunspellConan(ConanFile):
 
     def system_requirements(self):
         try:
-            installer = conans.tools.SystemPackageTool()
-            installer.update()
+            if (self._is_msvc):
+                return
+            if (os_info.detect_windows_subsystem() != None and os_info.detect_windows_subsystem() != 'WSL'):
+                os.environ["CONAN_SYSREQUIRES_SUDO"] = "False"
+            installer = SystemPackageTool()
+            #installer.update()
             installer.install('autoconf')
             installer.install('automake')
             installer.install('libtool')
@@ -43,6 +48,7 @@ class LibhunspellConan(ConanFile):
             installer.install('pkg-config')
         except:
             self.output.warn('Unable to bootstrap required build tools.  If they are already installed, you can ignore this warning.')
+            self.output.warn(traceback.print_exc())
 
     def build_requirements(self):
         if tools.os_info.is_windows:
@@ -58,9 +64,9 @@ class LibhunspellConan(ConanFile):
 
     def source(self):
         archive_name = "hunspell-{0}".format(self.version)
-        source_url = "https://github.com/hunspell/hunspell/files/"
-        tools.get("{0}/{1}/{2}.tar.gz".format(source_url, self.file_id, archive_name),
-                  sha256="57be4e03ae9dd62c3471f667a0d81a14513e314d4d92081292b90435944ff951")
+        source_url = "https://github.com/hunspell/hunspell/archive"
+        tools.get("{0}/v{1}.tar.gz".format(source_url, self.version),
+                  sha256="bb27b86eb910a8285407cf3ca33b62643a02798cf2eef468c0a74f6c3ee6bc8a")
         os.rename(archive_name, self._source_subfolder)
 
         with open(os.path.join(self._source_subfolder, "src", "Makefile.am"), "w") as f:
@@ -111,17 +117,47 @@ class LibhunspellConan(ConanFile):
                 env_build.make()
                 env_build.install()
 
+    def _build_msbuild(self):
+        msbuild = MSBuild(self)
+        with tools.chdir(self._source_subfolder):
+            tools.replace_in_file("msvc\\libhunspell.vcxproj", "v140_xp", "v140")
+
+            env_vars = tools.vcvars_dict(self.settings)
+            winsdkver = env_vars["WindowsSDKVersion"].replace("\\", "")
+            self.output.info('Using Windows SDK Version %s' % winsdkver)
+            tools.replace_in_file("msvc\\libhunspell.vcxproj",
+             "<WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>", 
+             "<WindowsTargetPlatformVersion>%s</WindowsTargetPlatformVersion>" % winsdkver)
+            if (self.options.shared):
+                msbuild.build("msvc\\libhunspell.vcxproj")
+            else:
+                msbuild.build("msvc\\libhunspell.vcxproj", definitions={"HUNSPELL_STATIC": None})
+
     def build(self):
-        with tools.vcvars(self.settings) if self._is_msvc else tools.no_op():
+        if self._is_msvc:
+            self._build_msbuild()
+        else:
             self._build_autotools()
 
     def package(self):
         self.copy(os.path.join(self._source_subfolder, "COPYING.LIB"),
                   dst="licenses", ignore_case=True, keep_path=False)
         # remove libtool .la files - they have hard-coded paths
-        with tools.chdir(os.path.join(self.package_folder, "lib")):
-            for filename in glob.glob("*.la"):
-                os.unlink(filename)
+        if self._is_msvc:
+            include_folder = os.path.join(self._source_subfolder, "src")
+            self.copy(pattern="*.hxx", dst="include", src=include_folder)
+            self.copy(pattern="*.h", dst="include", src=include_folder)
+            self.copy(pattern="*.dll", dst="bin", keep_path=False)
+            self.copy(pattern="*.lib", dst="lib", keep_path=False)
+            self.copy(pattern="*.a", dst="lib", keep_path=False)
+            self.copy(pattern="*.so*", dst="lib", keep_path=False)
+            self.copy(pattern="*.dylib", dst="lib", keep_path=False)
+        else:
+            with tools.chdir(os.path.join(self.package_folder, "lib")):
+                for filename in glob.glob("*.la"):
+                    os.unlink(filename)
 
     def package_info(self):
         self.cpp_info.libs = tools.collect_libs(self)
+        if (not self.options.shared):
+            self.cpp_info.defines = ["HUNSPELL_STATIC"]
