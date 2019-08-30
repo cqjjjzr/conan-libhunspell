@@ -1,3 +1,13 @@
+env:
+   global:
+     - CONAN_USERNAME: "charliejiang"
+     - CONAN_LOGIN_USERNAME: "charliejiang"
+     - CONAN_CHANNEL: "testing"
+     - CONAN_UPLOAD: "https://api.bintray.com/conan/charliejiang/conan"
+     - CONAN_STABLE_BRANCH_PATTERN: "release/*"
+     - CONAN_UPLOAD_ONLY_WHEN_STABLE: 1 # Will only upload when the branch matches "release/*"
+     - CONAN_DOCKER_32_IMAGES: 1
+
 linux: &linux
    os: linux
    dist: xenial
