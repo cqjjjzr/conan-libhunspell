@@ -122,11 +122,13 @@ class LibhunspellConan(ConanFile):
             tools.replace_in_file("msvc\\libhunspell.vcxproj", "v140_xp", "v140")
 
             env_vars = tools.vcvars_dict(self.settings)
-            winsdkver = env_vars["WindowsSDKVersion"].replace("\\", "")
-            self.output.info('Using Windows SDK Version %s' % winsdkver)
+            #winsdkver = env_vars["WindowsSDKVersion"].replace("\\", "")
+            #self.output.info('Using Windows SDK Version %s' % winsdkver)
+            # WindowsSDKVersion is not set in some version of vcvars...
+            # But in Visual Studio 2019 when it's set to 10.0 it will be the latest version installed on the system
             tools.replace_in_file("msvc\\libhunspell.vcxproj",
              "<WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>",
-             "<WindowsTargetPlatformVersion>%s</WindowsTargetPlatformVersion>" % winsdkver)
+             "<WindowsTargetPlatformVersion>%s</WindowsTargetPlatformVersion>" % "10.0")
             if (self.options.shared):
                 msbuild.build("msvc\\libhunspell.vcxproj")
             else:
